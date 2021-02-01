@@ -1,5 +1,6 @@
 #include "hmm.h"
 #include "run_hmm.h"
+#include "config.h"  // TODO Missing include for PKGDATADIR?
 #include "translation_tables.h"
 #include "util_lib.h"
 
