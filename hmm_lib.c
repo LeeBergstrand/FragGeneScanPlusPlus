@@ -17,7 +17,12 @@ void viterbi(HMM *hmm_ptr, const char *O, char *output_buffer, char *aa_buffer,
     double start_freq;
 
     Strand strand = UNKNOWN_STRAND;
-    Nucleotide dna_seq[len_seq];
+    unsigned int dna_seq_len = len_seq + (len_seq / 10);
+        /* Length of dynamic dna_seq (add 10% for inserting placeholders for missing nucleotides) */
+    Nucleotide dna_seq_array[dna_seq_len];
+    Nucleotide *dna_seq = (Nucleotide*) &dna_seq_array;
+        /* For performance, initially use storage on the stack. */
+        /* (If necessary, replace it later with dynamically-allocated storage.) */
     int dna_id = 0;
     int out_nt;
     int start_t = -1, end_t = -1;
@@ -206,7 +211,7 @@ void viterbi(HMM *hmm_ptr, const char *O, char *output_buffer, char *aa_buffer,
                     }
 
 
-                    /* to aviod stop codon */
+                    /* to avoid stop codon */
                     if (t<2) {
                     } else if ((i==M2_STATE || i==M5_STATE) && (sequence[temp_i[j-I1_STATE]] == NUCL_T) &&
                                (((sequence[t] == NUCL_A) && (sequence[t+1] ==NUCL_A)) ||
@@ -349,7 +354,7 @@ void viterbi(HMM *hmm_ptr, const char *O, char *output_buffer, char *aa_buffer,
                     //!! 11 --> 16
                     //!! What is the actual point of -1
 
-                    /* to aviod stop codon */
+                    /* to avoid stop codon */
                     if (t<2) {
                     } else  if ((i==M2_STATE_1 ||
                                  i==M5_STATE_1) &&
@@ -514,7 +519,7 @@ void viterbi(HMM *hmm_ptr, const char *O, char *output_buffer, char *aa_buffer,
 
         /*************************************************/
         /* START' state                                  */
-        /* origianlly stop codon of genes in - strand    */
+        /* originally stop codon of genes in - strand    */
         /*************************************************/
         if (alpha[S_STATE_1][t] == 0) {
 
@@ -651,7 +656,7 @@ void viterbi(HMM *hmm_ptr, const char *O, char *output_buffer, char *aa_buffer,
 
         /**********************************************/
         /* END' state                                 */
-        /* origianlly start codon of genes in - strand */
+        /* originally start codon of genes in - strand */
         /**********************************************/
         if (alpha[E_STATE_1][t] == 0) {
 
@@ -745,7 +750,7 @@ void viterbi(HMM *hmm_ptr, const char *O, char *output_buffer, char *aa_buffer,
         }
     }
 
-    /* backtrack the opitmal path */
+    /* backtrack the optimal path */
     for (t = len_seq-2; t >= 0; t--) {
         if (t+1 < 0 || vpath[t+1] < 0) continue;
         vpath[t] = path[vpath[t+1]][t+1];
@@ -824,11 +829,26 @@ void viterbi(HMM *hmm_ptr, const char *O, char *output_buffer, char *aa_buffer,
                    vpath[t] - prev_match < 6) {
 
             out_nt = vpath[t]-prev_match;
-            if (vpath[t] < prev_match)
+            if (vpath[t] < prev_match) {
                 out_nt += 6;
+            }
 
             for (kk = 0; kk < out_nt; kk++) {  /* for deleted nt in reads */
-                dna_id ++;
+                dna_id++;
+                if (dna_id >= dna_seq_len) {
+                	/* About to write past the end of the referenced storage, so allocate a */
+                	/* bigger block of memory to replace it and copy the existing contents. */
+                    printf("[Debug] %s (line %d): >>> Reallocating dna_seq: t=%d, dna_id=%d, dna_seq_len=%d\n",
+                           __FILE__, __LINE__, t, dna_id, dna_seq_len);
+                    dna_seq_len += (dna_seq_len / 10);  /* Length of dynamic dna_seq (grow by 10%) */
+                    Nucleotide *new_dna_seq = calloc(dna_seq_len, sizeof(Nucleotide));
+                    memcpy(new_dna_seq, dna_seq, (dna_id + 1) * sizeof(Nucleotide));
+                    if (dna_seq != (Nucleotide*) &dna_seq_array) {
+                    	// dna_seq references a dynamically allocated block, which must be freed.
+                        free(dna_seq);
+                    }
+                    dna_seq = new_dna_seq;
+                }
                 dna[dna_id] = 'N';
                 dna_seq[dna_id] = NUCL_INVALID;
                 if (kk>0) {
@@ -860,6 +880,10 @@ void viterbi(HMM *hmm_ptr, const char *O, char *output_buffer, char *aa_buffer,
     free_imatrix(path);
     free(vpath);
     vpath = NULL;
+    if (dna_seq != (Nucleotide*) &dna_seq_array) {
+    	// dna_seq references a dynamically allocated block, which must be freed.
+        free(dna_seq);
+    }
 
     dna = 0;
     dna_rc = 0;
@@ -898,7 +922,7 @@ void get_prob_from_cg(HMM *hmm_ptr, TRAIN *train_ptr, const char *O, int len_seq
 }
 
 
-//!! This function is for some strange reason definetly leaking memory. Need to find out why.
+//!! This function is for some strange reason definitely leaking memory. Need to find out why.
 void get_train_from_file(char *filename, HMM *hmm_ptr, char *mfilename,
                          char *mfilename1, char *nfilename, char *sfilename, char *pfilename,
                          char *s1filename, char *p1filename, char *dfilename, TRAIN *train_ptr) {
